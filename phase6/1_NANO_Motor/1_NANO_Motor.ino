@@ -1,5 +1,5 @@
 /*
-**************************************
+********************************************************
 * Kode Untuk menggerakkan servo
 * Bagian dari project Ventilator MUMU
 * PT Sibernetika Teknologi Industri
@@ -7,9 +7,8 @@
 * Device: Arduino Nano
 * Author:
 *      - Prasetyo Wibowo LS. (prasetyowls12@yahoo.com)
-***************************************
+*********************************************************
 */
-
 
 /* KONFIGURASI PIN *****************************
 * ENA     (DO)    PIN ENABLE
@@ -35,47 +34,51 @@
 #define Bt2 A5
 
 /* DEFINISI VARIABEL ****************************
-* slopeFactor = Faktor Sloping untuk akselerasi
-* Offsetq   =   Offset untuk
-* dirInhale =   Tegangan yang membuat motor gerak ke arah inhale (HIGH)
-* warnq     =   Status warning
-* stateq    =
-* delayq    =
-
+*  slopeFactor  =   Faktor Sloping untuk akselerasi
+*  Offsetq      =   Offset untuk
+*  dirInhale    =   Tegangan yang membuat motor gerak ke arah inhale (HIGH)
+*  delayq       =   Delay pulse untuk gerakan santai (input manual dari button)
+*  IRat         =   Ratio Inhale
 *************************************************/
 #define slopeFactor 0.35
 #define offsetq 11
 #define dirInhale HIGH
+#define delayq 2000
+#define IRat 1
 
-bool warnq = false;
-int stateq = 2;
-int stepq = 0;
-int delayq = 2000;
-
-/* Input HMI ******************************
-// volTidal = Volume Tidal (cc)
-// IRat dan ERat = IERatio ( I : E )
-// RR = Respiration Rate (x per minute)
-*******************************************/
-float volTidal = 0;
-int IRat = 1;
-float ERat = 1;
-int RR = 10;
-
-//-- GLOBAL VARIABLEs ===============================================================
-unsigned long stepTidal, delayInhale, delayExhale, timeInEx;
-float timeInhale, timeExhale, IERatio, timeBreath;
+/* GLOBAL VARIABLEs ******************************/
+unsigned long stepTidal, delayInhale, delayExhale;
+float timeInhale, timeExhale, timeBreath;
 float initDelay = 25;
+
 unsigned long p_vol, p_RR;
 float p_IE;
 int p_mode = 0;
+float p_del = 0;
+bool warnq = false;
 
 int num_buf = 5;
 String bufferq[5];
-float p_del=0;
 String lastData = "<0,0,0,0,0>";
 bool updated = false;
+
 unsigned long stepstop = 0;
+int stepq = 0;
+
+
+/* FUNCTION PROMISES ****************************/
+// Comm Functions
+void updateAllGlobal();
+String readSerial();
+void updateParam(float, int, float);
+
+// Movement Functions
+int Inhale2();
+void Exhale(int);
+
+// Interrupt Functions
+void updateEMGS();
+void triggerWarn();
 
 /* SETUP ***************************************
 - Set Serial BAUD Rate
@@ -86,7 +89,7 @@ unsigned long stepstop = 0;
 void setup() {
   Serial.begin(115200);
 
-  updateParam(volTidal, RR, ERat);
+  // updateParam(0, 10, 1);
 
   pinMode(ENA, OUTPUT);
   pinMode(PUL, OUTPUT);
@@ -110,11 +113,11 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(EMGS), updateEMGS, CHANGE);
   attachInterrupt(digitalPinToInterrupt(WARNN), triggerWarn, FALLING);
 
-  //-- KALIBRASI
+  // KALIBRASI ---
   Serial.println("Callibrating...");
   digitalWrite(ENA, HIGH);
 
-  //Maju 1000 Step
+  // Maju 1000 Step
   digitalWrite(DIR, dirInhale);
   delayMicroseconds(5);
   for(int i = 0; i < 1000; i++) {
@@ -122,12 +125,10 @@ void setup() {
     delayMicroseconds(1500);
     digitalWrite(PUL, LOW);
     delayMicroseconds(1500);
-    if(digitalRead(CWL) == HIGH){
-      break;
-    }
+    if(digitalRead(CWL) == HIGH) break;
   }
 
-  //Mundur 8 detik
+  // Mundur 8 detik
   digitalWrite(DIR, !dirInhale);
   delayMicroseconds(5);
 
@@ -142,7 +143,6 @@ void setup() {
 
   digitalWrite(ENA, LOW);
   Serial.println("DONE, READY!");
-
 }
 
 /* LOOP ***************************************
@@ -154,42 +154,60 @@ void setup() {
   -- Check for Limit Switches
 ***********************************************/
 void loop() {
+  // 1. Get Command from Serial
   updateAllGlobal();
 
+  // 2a. If Mode ON
   if(p_mode!=0 && !digitalRead(EMGS)){
+    // 2a.1. Enable the Actuator
     digitalWrite(ENA, HIGH);
+
     if (stepTidal > 0) {
         unsigned long now = micros();
 
+        // 2a.2. Do Inhale
         stepstop = Inhale2();
-
+        // Added Delay for Plateau Pressure
         delayMicroseconds(100);
+        // Send Serial untuk menandakan inhale selesai (end inhale)
         Serial.println("{ei}"); Serial.flush();
 
+        // 2a.3. Do Exhale
         Exhale(stepstop);
-
+        // Idling
         while((micros()-now) < timeBreath){}
-
+        // Send Serial untuk menandakan exhale selesai (end exhale)
         Serial.println("{ec}"); Serial.flush();
-//      }
+
     } else {
       //throw error message
     }
-  } else {
+  }
+
+  // 2b. If Mode OFF
+  else {
+    // 2b.1. Disable the Actuator
     digitalWrite(ENA, LOW);
+
+    // 2b.2. Check For Limit Switches
     if(digitalRead(CCWL) == HIGH){
       Serial.println("CCWL");
     }
     if(digitalRead(CWL) == HIGH){
       Serial.println("CWL");
     }
+
+    // 2b.3. Check For Emergency Button
     if(digitalRead(EMGS)){
       Serial.println("{ee}");
     } else {
       Serial.println("Waiting.. (mode 0 )");
     }
+
     Serial.flush();
     delay(1000);
+
+    // 2b.4. Check for Manual Input
     if(digitalRead(Bt1) == LOW){
       digitalWrite(ENA, HIGH);
       digitalWrite(DIR, dirInhale);
@@ -214,22 +232,20 @@ void loop() {
   }
 }
 
-void updateEMGS(){
-  if(digitalRead(EMGS) == HIGH) { // ON
-    //kirim perintah ke raspi
-    Serial.println("{ee}");
-  } else { //EMGS OFF
-    Serial.println("EE off");
-  }
-}
+/**************************
+*      COMM FUNCTIONS     *
+***************************/
 
-void cekNewParam(){
-  String received = listeningMega();
+/* Update Global Variables **********************
+*  Update most global values dari data Serial
+*  return: None
+*************************************************/
+void updateAllGlobal(){
+  String received = readSerial();
   if(!updated) {
     Serial.print("Received: ");
     Serial.println(received);
     Serial.flush();
-
 
     int indexStart = 0;
     int indexEnd = 0;
@@ -252,11 +268,11 @@ void cekNewParam(){
   }
 }
 
-void updateAllGlobal(){
-  cekNewParam();
-}
-
-String listeningMega(){
+/* Read Serial **************************
+*  Fungsi untuk membaca string yang masuk ke Serial
+*  return: String
+********************************************/
+String readSerial(){
   bool quit = false;
   String seriesData = "";
 
@@ -276,6 +292,10 @@ String listeningMega(){
   return seriesData.substring(1,seriesData.length()-1);
 }
 
+/* Update Param **********************
+*  Update parameter gerakan berdasar variable global baru
+*  return: None
+*************************************************/
 void updateParam(float vol, int RRq, float ERatq){
   stepTidal = vol;
   timeBreath = (60000 / float(RRq)) * 1000;
@@ -311,49 +331,14 @@ void updateParam(float vol, int RRq, float ERatq){
 }
 
 
-//-- Sekuens Inhale ====================================================================
-void Inhale() {
-  // 0. Hitung Waktu
-//  unsigned long now = micros();
-//  float delayInhale2 = delayInhale-offsetq;
-  bool ntab = false;
-  float axq;
-  float delayInhale2 = delayInhale-offsetq;
+/**************************
+*   MOVEMENT FUNCTIONS    *
+***************************/
 
-  // 1. Set Arah
-  digitalWrite(DIR, dirInhale);
-  delayMicroseconds(5);
-
-  // 2. Set Gerakan Stepper
-  if(ntab){
-    for(int i = 0; i < stepTidal; i++) {
-      if(i>0.6*stepTidal){
-        delayInhale2 += axq;
-      }
-      digitalWrite(PUL, HIGH);
-      delayMicroseconds(delayInhale2);
-      digitalWrite(PUL, LOW);
-      delayMicroseconds(delayInhale2);
-    }
-  } else {
-    for(int i = 0; i < stepTidal; i++) {
-    digitalWrite(PUL, HIGH);
-    delayMicroseconds(delayInhale2);
-    digitalWrite(PUL, LOW);
-    delayMicroseconds(delayInhale2);
-  }
-  }
-  // 3. Tampil Waktu
-//  Serial.print("Waktu Inhale = ");
-//  Serial.println(micros() - now);
-}
-
+/* Inhale Sequence ****************************/
 int Inhale2() { //assisted inhale
   // 0. Hitung Waktu
-//  unsigned long now = micros();
-//  float delayInhale2 = delayInhale-offsetq;
   int stepstop = stepTidal;
-  float axq;
   float delayInhale2 = delayInhale-offsetq;
 
   // 1. Set Arah
@@ -372,17 +357,13 @@ int Inhale2() { //assisted inhale
     }
   }
   warnq = false;
-  // 3. Tampil Waktu
-//  Serial.print("Waktu Inhale = ");
-//  Serial.println(micros() - now);
+
+  // Return jumlah step yang telah dilakukan
   return stepstop;
 }
 
-void triggerWarn(){
-  warnq = true;
-}
 
-//-- Sekuens Exhale ====================================================================
+/* Exhale Sequence **********************/
 void Exhale(int stepTidalq) {
   // 0. Hitung Waktu
   unsigned long now = micros();
@@ -400,16 +381,10 @@ void Exhale(int stepTidalq) {
     if(i>(1-slopeFactor)*stepTidalq){
       delayExhale2 += (initDelay-delayExhale) / (slopeFactor*stepTidalq);
     }
-//    if(digitalRead(limitSwitchEx)){
+
     digitalWrite(PUL, HIGH);
-//    }
-
     delayMicroseconds(delayExhale2);
-
-//    if(digitalRead(limitSwitchEx)){
     digitalWrite(PUL, LOW);
-//    }
-
     delayMicroseconds(delayExhale2);
 
     if(digitalRead(CCWL) == HIGH){
@@ -417,8 +392,24 @@ void Exhale(int stepTidalq) {
       break;
     }
   }
+}
 
-  // 3. Tampil Waktu
-//  Serial.print("Waktu Exhale = ");
-//  Serial.println(micros() - now);
+
+/**************************
+*   INTERRUPT FUNCTIONS   *
+***************************/
+
+/* Update Status Warning ***************************/
+void triggerWarn(){
+  warnq = true;
+}
+
+/* Update Status EMGS ***************************/
+void updateEMGS(){
+  if(digitalRead(EMGS) == HIGH) {
+    //kirim perintah ke raspi
+    Serial.println("{ee}");
+  } else { //EMGS OFF
+    Serial.println("EE off");
+  }
 }

@@ -1,0 +1,59 @@
+DEFINE---
+ENA
+PUL
+DIR
+ARST
+CWL
+CCWL
+EMGS
+WARNN
+Bt1
+Bt2
+
+slopeFactor
+offsetq
+dirInhale
+
+
+Variables---
+bool warnq
+int stateq
+int stepq
+int delayq
+
+float volTidal
+int IRat
+float ERat
+int RR
+
+Unsigned long stepTidal, delayInhale, delayExhale, timeInEx
+float timeInhale, timeExhalle, IERatio, timeBreath
+float initDelay
+unsigned long p_vol, p_RR
+float p_IE
+int p_mode
+
+int num_buf
+String bufferq
+float p_del
+String lastData
+bool updated
+unsigned long stepstop
+
+
+
+
+
+
+
+
+
+Func/Procedure---
+void setup()
+void loop()
+void updateEMGS();
+void updateAllGlobal();
+String readSerial();
+void updateParam(float, int, float);
+int Inhale2();
+void Exhale(int);
