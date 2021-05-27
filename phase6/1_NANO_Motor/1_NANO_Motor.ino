@@ -6,7 +6,7 @@
 *
 * Device: Arduino Nano
 * Author:
-*      - Prasetyo Wibowo LS. (prasetyowls12@yahoo.com)
+*      - Prasetyo Wibowo LS. (prasetyowls12 (at) yahoo (dot) com)
 *********************************************************
 */
 
