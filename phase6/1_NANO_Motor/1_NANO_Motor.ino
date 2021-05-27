@@ -34,18 +34,29 @@
 #define Bt1 A4
 #define Bt2 A5
 
+/* DEFINISI VARIABEL ****************************
+* slopeFactor = Faktor Sloping untuk akselerasi
+* Offsetq   =   Offset untuk
+* dirInhale =   Tegangan yang membuat motor gerak ke arah inhale (HIGH)
+* warnq     =   Status warning
+* stateq    =
+* delayq    =
 
+*************************************************/
+#define slopeFactor 0.35
 #define offsetq 11
 #define dirInhale HIGH
+
 bool warnq = false;
 int stateq = 2;
 int stepq = 0;
 int delayq = 2000;
 
-//-- Input HMI ======================================================================
+/* Input HMI ******************************
 // volTidal = Volume Tidal (cc)
 // IRat dan ERat = IERatio ( I : E )
 // RR = Respiration Rate (x per minute)
+*******************************************/
 float volTidal = 0;
 int IRat = 1;
 float ERat = 1;
@@ -53,7 +64,7 @@ int RR = 10;
 
 //-- GLOBAL VARIABLEs ===============================================================
 unsigned long stepTidal, delayInhale, delayExhale, timeInEx;
-float timeInhale, timeExhale, IERatio, timeBreath, slopeFactor;
+float timeInhale, timeExhale, IERatio, timeBreath;
 float initDelay = 25;
 unsigned long p_vol, p_RR;
 float p_IE;
@@ -66,14 +77,16 @@ String lastData = "<0,0,0,0,0>";
 bool updated = false;
 unsigned long stepstop = 0;
 
-//-- SETUP ==========================================================================
+/* SETUP ***************************************
+- Set Serial BAUD Rate
+- Update Parameter dengan parameter awal
+- Set mode pin-pin & interrupt
+- Lakukan kalibrasi (maju 1000 step kemudian mundur 8 detik)
+************************************************/
 void setup() {
   Serial.begin(115200);
 
-  slopeFactor = 0.35;
   updateParam(volTidal, RR, ERat);
-
-//  timeInEx = stepTidal * delayInhale/;
 
   pinMode(ENA, OUTPUT);
   pinMode(PUL, OUTPUT);
@@ -84,7 +97,6 @@ void setup() {
   delay(10);
   Serial.println("OFF");
   digitalWrite(ARST, LOW);
-
 
   pinMode(Bt1, INPUT_PULLUP);
   pinMode(Bt2, INPUT_PULLUP);
@@ -131,30 +143,22 @@ void setup() {
   digitalWrite(ENA, LOW);
   Serial.println("DONE, READY!");
 
-  ///--------------------
 }
 
-//-- LOOP ============================================================================
+/* LOOP ***************************************
+- Listen for Serial Comm Input
+- Update Global Variables
+- Do Inhale and Exhale if Mode on & EMGS off
+- If Mode off:
+  -- Check for Button input
+  -- Check for Limit Switches
+***********************************************/
 void loop() {
   updateAllGlobal();
 
   if(p_mode!=0 && !digitalRead(EMGS)){
     digitalWrite(ENA, HIGH);
     if (stepTidal > 0) {
-//      if(p_mode == 1){ //MANDATORY
-//        unsigned long now = micros();
-//
-//        Inhale();
-//
-//        delayMicroseconds(100);
-//        Serial.println("{ei}"); Serial.flush();
-//
-//        Exhale(stepTidal);
-//
-//        while((micros()-now) < timeBreath){}
-//
-//        Serial.println("{ec}"); Serial.flush();
-//      } else if(p_mode == 2) { //ASSISTED
         unsigned long now = micros();
 
         stepstop = Inhale2();
