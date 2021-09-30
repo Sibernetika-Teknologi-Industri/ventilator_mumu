@@ -18,3 +18,8 @@ Low Cost Ventilator - ITB
 ## Phase 6:
 - Backup setelah uji pre-klinis
 - Persiapan pengembangan lanjutan per 25 Mei 2021
+
+## Phase 8:
+- IR Calculation from sensor
+- Fighting and Spurious Alarm
+- Mandatory Pressure Control
