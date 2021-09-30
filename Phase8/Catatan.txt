@@ -1,3 +1,3 @@
 UpdateFlowModifikasi7(30-9-21).json = Node-red Ventilator
 Book3.csv = Tabel MySQL disimpan di /home/pi/ventilator/kalibrasi/
-update9 : Arduino Motor Ventilator
+update9 : Arduino Motor Ventilator.
